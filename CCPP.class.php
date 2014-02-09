@@ -321,7 +321,7 @@ class CCPP
             if (is_string($value)) //Operator
                 $code .= $value;
             elseif ($value[0] == T_OPEN_TAG) // <?php tag
-                $code .= $sPOT.'echo \'<?php\';'.$sPCT."\n\n";
+                $code .= $sPOT.'echo \'<?php\';'.$sPCT."\n";
             elseif ($value[0] == T_WHITESPACE && $this->options['translate.compactWhitespaces']) //Replaces whitespaces with single space character
                 $code .= ' ';
             elseif ($value[0] == T_STRING) {
@@ -377,6 +377,8 @@ class CCPP
                     $code .= $sPOT.'$this->_processor_warning('.$this->_protector_singleQuoted($op).', '.$value[2].');'.$sPCT."\n";
 
             } // END Directives
+            elseif ($value[0] == T_DOC_COMMENT); //skip /** */ PHPDoc comments.
+            elseif ($value[1][0] == '/' && $value[1][1] == '/'); // skip inlined '//' comments (not recognized as T_COMMENT as of zend 2.4)
             else $code .= strtr($value[1], $protectPOT); //Unrecognized token is appended as is
         }
         return $code; // Return compiled code
