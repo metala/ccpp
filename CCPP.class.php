@@ -61,6 +61,7 @@ class CCPP
     //Macros
     public $macros = array(); //Object-like macros
     public $functionMacros = array(); //Function-like macros
+    public $user_directives = array(); //User defined directives
     
     //Cache
     protected $_cache_phpSnippets = array();
@@ -111,7 +112,7 @@ class CCPP
         
         //Regexps
         $this->_cache_regexps = array(
-            'defineMacroOperands' => '~^([a-z_][a-z0-9_]+(\\([a-z0-9,_ ]*\\))?)(\s+([^\r\n]+))?~i',
+            'defineMacroOperands' => '~^([a-z_][a-z0-9_]+(\\([a-z0-9,_ \'"]*\\))?)(\s+([^\r\n]+))?~i',
             'version' => '~^([0-9]{1,2})\.([0-9]{1,2})((\.([0-9]{1,2}))|((pa|a|b|rc)([0-9]?)))?~',
         );
         
@@ -161,9 +162,15 @@ class CCPP
         return isset($name) ? $this->options[$name] : $this->options; 
     }
     //Macro getters and setters
-    public function define($name, $value) {$this->macros[$name] = $value;}
-    public function isDefined($name) {return isset($this->macros[$name]);}
-    public function getMacro($name) {return $this->macros[$name];}
+    public function define($name, $value) {@$this->macros[$name] = $value;}
+    public function isDefined($name) {return (array_key_exists($name, $this->macros) && isset($this->macros[$name]));}
+    public function getMacro($name)
+    {
+        if ($this->isDefined($name))
+            return $this->macros[$name];
+        fwrite(STDERR, "#CCPP error: attempting to access undefined macro \"$name\"\n");
+        return '';
+    }
     
     public function execute($filename, $offset = 0)
     {
@@ -375,10 +382,14 @@ class CCPP
                     $code .= $sPOT.'$this->_processor_error('.$this->_protector_singleQuoted($op).', '.$value[2].');'.$sPCT."\n";
                 elseif ($directive == 'warning')
                     $code .= $sPOT.'$this->_processor_warning('.$this->_protector_singleQuoted($op).', '.$value[2].');'.$sPCT."\n";
+                // User defined directive (WIP)
+                elseif (array_key_exists($directive, $this->user_directives))
+                    $code .= $sPOT.'$this->_processor_userdirective('.$this->_protector_singleQuoted($op).', '.$value[2].');'.$sPCT."\n";
+                else fwrite(STDERR, "#CCPP: Invalid directive \"#$directive\" at line {$value[2]}\n");
 
             } // END Directives
-            elseif ($value[0] == T_DOC_COMMENT); //skip /** */ PHPDoc comments.
-            elseif ($value[1][0] == '/' && $value[1][1] == '/'); // skip inlined '//' comments (not recognized as T_COMMENT as of zend 2.4)
+            elseif ($value[0] == T_DOC_COMMENT); //Skip /** */ PHPDoc comments.
+            elseif ($value[1][0] == '/' && $value[1][1] == '/'); //Skip inlined '//' comments (not recognized as T_COMMENT)
             else $code .= strtr($value[1], $protectPOT); //Unrecognized token is appended as is
         }
         return $code; // Return compiled code
@@ -417,14 +428,13 @@ class CCPP
                 if ($sourceTokens[$i + 1] == '('){
                     $args[$k++] = $this->_compiler_macroFunction($sourceTokens, $i, $skip);
                 }
-                else {
+                else { */
                     $args[$k++] = '$ccpp->_processor_macro('.$this->_protector_singleQuoted($iToken[1]).')';
-                    $args[$k] .= $iToken[1];
-                }*/
-                $args[$k] .= $iToken[1];
+                    @$args[$k] .= $iToken[1];
+                /*}*/
             }
             elseif ($iToken[0] != T_WHITESPACE)
-                $args[$k] .= $iToken[1];
+                @$args[$k] .= $iToken[1];
         }
         if (isset($sourceTokens[$i])) { //There is matching closing bracket
             if(isset($args[$k])) $args[$k] = $this->_protector_singleQuoted($args[$k]);
@@ -503,7 +513,7 @@ class CCPP
         if (($pos = strpos($macroName, '(')) !== false) { //Function-like macro
             $name = substr($macroName, 0, $pos);
             $argsString = substr($macroName, $pos + 1, -1);
-            $args = split('\s*,\s*', $argsString);
+            $args = preg_split('/\s*,\s*/', $argsString);
             $macroCode = strtr($macroCode, array('%' => '%%'));
             $replace_pairs = array_flip($args);
             $i = 0;
@@ -518,6 +528,10 @@ class CCPP
             $macroCode = preg_replace('~[ ]*(?<!#)(##)(?!#)[ ]*~', '' , $macroCode); // HASH HASH replacement
             $this->macros[$macroName] = $macroCode;
         }
+    }
+    protected function _processor_userdirective($operand)
+    {
+
     }
     protected function _processor_isDefined($macroName)
     {
